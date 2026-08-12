@@ -1,4 +1,3 @@
-cat << 'EOF' > ~/azure-vm-audit/run_azure_audit.sh
 #!/bin/bash
 
 # Move explicitly into the working directory containing your Terraform configs
