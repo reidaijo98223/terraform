@@ -1,4 +1,4 @@
-# Azure Virtual Machine Infrastructure Status Audit
+# Azure_VM_Audit
 
 An automated utility that leverages Terraform, native Azure CLI, and curl to query, transform, and export live Virtual Machine (VM) operational status data directly to an enterprise Nexus repository.
 
