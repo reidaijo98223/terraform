@@ -1,0 +1,132 @@
+# 1. Provider Configuration
+terraform {
+  required_version = ">= 1.0.0"
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+# 2. Base Infrastructure (Resource Group & Networking)
+resource "azurerm_resource_group" "rg" {
+  name     = "rg-rhel-prod"
+  location = "East US"
+}
+
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet-rhel-prod"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+resource "azurerm_subnet" "subnet" {
+  name                 = "snet-internal"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+# Public IP so you can access it
+resource "azurerm_public_ip" "pip" {
+  name                = "pip-rhel-vm"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+# Network Interface Card (NIC)
+resource "azurerm_network_interface" "nic" {
+  name                = "nic-rhel-vm"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.subnet.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.pip.id
+  }
+}
+
+# 3. RBAC Identity Configuration
+# Assigns a System Managed Identity to the VM for Azure RBAC
+resource "azurerm_user_assigned_identity" "vm_identity" {
+  name                = "id-rhel-vm-rbac"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+# Example RBAC role assignment: Reader access to the resource group
+resource "azurerm_role_assignment" "example_rbac" {
+  scope                = azurerm_resource_group.rg.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_user_assigned_identity.vm_identity.principal_id
+}
+
+# 4. RHEL VM Definition
+resource "azurerm_linux_virtual_machine" "rhel_vm" {
+  name                = "vm-rhel-python"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  
+  # Standard_D2s_v5 maps precisely to 2 vCPUs and 8 GB RAM
+  size                = "Standard_D2s_v5"
+  admin_username      = "azureuser"
+  network_interface_ids = [
+    azurerm_network_interface.nic.id,
+  ]
+
+  # Assign the Managed Identity for Azure RBAC
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.vm_identity.id]
+  }
+
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = file(var.public_key_path)
+  }
+
+  # 16 GB OS Disk Configuration
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+    disk_size_gb         = 16
+  }
+
+  # Fetch official Red Hat Enterprise Linux 9 image
+  source_image_reference {
+    publisher = "RedHat"
+    offer     = "RHEL"
+    sku       = "9-lvm-gen2"
+    version   = "latest"
+  }
+
+  # Post-deployment script: Users, Sudoers, and Python 3
+  custom_data = base64encode(<<-EOF
+    #!/bin/bash
+    # Update system packages
+    dnf update -y
+    
+    # Install Python 3
+    dnf install -y python3
+    
+    # Create application user
+    useradd -m -s /bin/bash lyn-reinogar
+    echo 'devuser:TemporaryPassword123!' | chpasswd
+    
+    # Add to sudoers via wheel group and explicit config block
+    usermod -aG wheel devuser
+    echo 'devuser ALL=(ALL) NOPASSWD:ALL' | tee /etc/sudoers.d/devuser
+    chmod 0440 /etc/sudoers.d/devuser
+  EOF
+  )
+}

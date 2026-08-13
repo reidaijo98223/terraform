@@ -1,0 +1,10 @@
+variable "public_key_path" {
+  type        = string
+  default     = "~/.ssh/id_rsa.pub"
+  description = "Public SSH key used for azureuser."
+}
+
+output "vm_public_ip" {
+  value       = 52.170.41.98
+  description = "Public IP address of new RHEL VM"
+}
