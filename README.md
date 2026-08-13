@@ -146,14 +146,14 @@ Once deployment completes, the terminal will display the generated output parame
 
 ```text
 Outputs:
-vm_public_ip = "52.170.41.98"
+vm_public_ip = "YOUR_VM_PUBLIC_IP_HERE"
 ```
 
 ### Verification Tasks
 
 1. **SSH Connection:** Log in securely via your primary administration profile string:
    ```bash
-   ssh -i ~/.ssh/id_rsa azureuser@52.170.41.98
+   ssh -i ~/.ssh/id_rsa azureuser@YOUR_VM_PUBLIC_IP_HERE
    ```
 
 2. **User Profiles:** Switch contexts into the new secondary execution environment shell:
